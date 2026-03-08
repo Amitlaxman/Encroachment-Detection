@@ -62,42 +62,53 @@ else:
 st.sidebar.subheader("2. Time Period")
 start_year, end_year = st.sidebar.slider("Select Year Range", 2005, 2025, (2015, 2025))
 
+# --- Helpers ---
+import rasterio
+import numpy as np
+from PIL import Image
+
+def tif_to_rgb_image(tif_path):
+    """Read bands 1,2,3 (R,G,B) from a GeoTIFF, stretch to 0-255, return PIL Image."""
+    with rasterio.open(tif_path) as src:
+        r = src.read(1).astype(float)
+        g = src.read(2).astype(float)
+        b = src.read(3).astype(float)
+
+    def stretch(band):
+        p2, p98 = np.nanpercentile(band[band > 0], (2, 98)) if np.any(band > 0) else (0, 1)
+        band = np.clip(band, p2, p98)
+        band = (band - p2) / (p98 - p2 + 1e-9) * 255
+        return band.astype(np.uint8)
+
+    rgb = np.stack([stretch(r), stretch(g), stretch(b)], axis=-1)
+    return Image.fromarray(rgb)
+
 # --- Main Dashboard ---
 row1_col1, row1_col2 = st.columns([2, 1])
 
-from gee_pipeline import get_aoi, fetch_imagery
+base_dir = os.path.dirname(os.path.dirname(__file__))
+images_dir = os.path.join(base_dir, 'datasets', 'dataset_2005_2025', 'images')
 
 with row1_col1:
-    st.subheader("Geospatial Visualization")
-    # Initialize Map
-    m = geemap.Map(center=[(bbox[1] + bbox[3])/2, (bbox[0] + bbox[2])/2], zoom=13)
-    m.addLayer(aoi, {'color': 'red'}, "Area of Interest", False)
-    
-    # Add Earth Engine layers directly for the selected years!
-    try:
-        # Fetch imagery for Start Year
-        img_start, _ = fetch_imagery(start_year, aoi)
-        vis_params = {'bands': ['Red', 'Green', 'Blue'], 'min': 0, 'max': 0.3}
-        # Add start year as base
-        m.addLayer(img_start, vis_params, f"Satellite Image ({start_year})", False)
-        
-        # Fetch imagery for End Year
-        img_end, _ = fetch_imagery(end_year, aoi)
-        m.addLayer(img_end, vis_params, f"Satellite Image ({end_year})", True)
-        
-        # We can also try adding the local change map if it exists, or just the EE images.
-        # Let's add the local change map if it's there
-        base_dir_app = os.path.dirname(os.path.dirname(__file__))
-        dset_name = f"dataset_{start_year}_{end_year}"
-        change_map_path = os.path.join(base_dir_app, 'datasets', dset_name, 'changes', f'change_map_{start_year}_{end_year}.tif')
-        
-        if os.path.exists(change_map_path):
-            # geemap can add local raster
-            m.add_raster(change_map_path, bands=[3], colormap="reds", layer_name="Detected Encroachment (Red)", opacity=0.7)
-    except Exception as e:
-        st.warning(f"Could not load interactive map layers: {e}")
-    
-    m.to_streamlit(height=600)
+    st.subheader("Satellite Image Comparison")
+
+    img_col1, img_col2 = st.columns(2)
+
+    def show_year_image(col, year):
+        tif_path = os.path.join(images_dir, f'composite_{year}.tif')
+        with col:
+            st.markdown(f"**{year}**")
+            if os.path.exists(tif_path):
+                try:
+                    img = tif_to_rgb_image(tif_path)
+                    st.image(img, use_column_width=True)
+                except Exception as e:
+                    st.error(f"Could not read image for {year}: {e}")
+            else:
+                st.warning(f"No composite image found for {year}. Run `dataset_generator.py` first.")
+
+    show_year_image(img_col1, start_year)
+    show_year_image(img_col2, end_year)
 
 with row1_col2:
     st.subheader("Statistical Reports")
@@ -106,7 +117,6 @@ with row1_col2:
     st.info("Run the backend pipeline to generate local datasets and change reports. Once generated, the statistics will appear here.")
     
     # Checking if reports exist
-    base_dir = os.path.dirname(os.path.dirname(__file__))
     dataset_name = f"dataset_{start_year}_{end_year}"
     changes_dir = os.path.join(base_dir, 'datasets', dataset_name, 'changes')
     

@@ -1,3 +1,5 @@
 datasets/
 *.zip
 venv/
+store/
+__pycache__/

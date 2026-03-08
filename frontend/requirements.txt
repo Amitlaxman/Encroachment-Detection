@@ -1,0 +1,8 @@
+streamlit
+folium
+streamlit==1.32.2
+geemap==0.32.1
+python-box==7.1.1
+xarray
+rioxarray
+localtileserver

@@ -86,14 +86,33 @@ def tile_image(image_path, output_dir, year):
         print(f"Error tiling {image_path}: {e}")
 
 if __name__ == "__main__":
-    base_dir = os.path.dirname(os.path.dirname(__file__))
-    # Example logic to tile the 2005-2025 dataset
-    dset_path = os.path.join(base_dir, 'datasets', 'dataset_2005_2025')
-    images_dir = os.path.join(dset_path, 'images')
+    import argparse
+    parser = argparse.ArgumentParser(description='Tile satellite imagery into patches.')
+    parser.add_argument('--year', type=int, help='Year to tile (if not specified, all found years will be tiled)')
     
-    if os.path.exists(images_dir):
-        for f in os.listdir(images_dir):
-            if f.endswith('.tif') and f.startswith('composite_'):
-                # Extract year
+    args = parser.parse_args()
+    
+    base_dir = os.path.dirname(os.path.dirname(__file__))
+    source_dir = os.path.join(base_dir, 'datasets', 'satellite_images', 'images')
+    output_base = os.path.join(base_dir, 'datasets', 'satellite_images', 'tiles')
+    
+    if not os.path.exists(source_dir):
+        print(f"Source directory {source_dir} not found.")
+    else:
+        files_to_tile = []
+        if args.year:
+            files_to_tile = [f'composite_{args.year}.tif']
+        else:
+            files_to_tile = [f for f in os.listdir(source_dir) if f.startswith('composite_') and f.endswith('.tif')]
+            
+        for f in files_to_tile:
+            # Extract year
+            try:
                 year = f.split('_')[1].split('.')[0]
-                tile_image(os.path.join(images_dir, f), dset_path, year)
+                img_path = os.path.join(source_dir, f)
+                # Output to a subfolder for each year's tiles within the main tiles directory
+                year_tile_dir = os.path.join(output_base, year)
+                print(f"Tiling {img_path} into {year_tile_dir}...")
+                tile_image(img_path, year_tile_dir, year)
+            except Exception as e:
+                print(f"Skipping {f}: {e}")

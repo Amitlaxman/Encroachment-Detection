@@ -3,9 +3,7 @@ import geemap
 from gee_pipeline import get_aoi, initialize_ee
 from image_processing import process_year
 
-# Define scales based on the satellite
-SCALE_S2 = 10  # Sentinel-2 resolution is 10m
-SCALE_L8 = 30  # Landsat 8 resolution is 30m
+
 
 def generate_dataset(start_year, end_year, output_dir, bbox=None):
     """
@@ -38,27 +36,30 @@ def generate_dataset(start_year, end_year, output_dir, bbox=None):
             bands_to_export = ['Red', 'Green', 'Blue', 'NIR', 'SWIR1', 'NDWI', 'water_mask', 'built_up_mask']
             
             export_img = img.select(bands_to_export)
-            scale = SCALE_S2 if source == 'Sentinel-2' else SCALE_L8
-            
             # Download via geemap using local compute
-            print(f"Downloading {year} ({source}) at {scale}m scale...")
-            geemap.ee_export_image(export_img, filename=out_path, scale=scale, region=aoi, file_per_band=False)
+            # Force scale=10 to maximize quality and ensure perfectly matching
+            # image dimensions for Sentinel-2 (10m) and Landsat (resampled to 10m)
+            print(f"Downloading {year} ({source}) at 10m scale...")
+            geemap.ee_export_image(export_img, filename=out_path, scale=10, region=aoi, file_per_band=False)
             print(f"Successfully downloaded {year}.")
             
         except Exception as e:
             print(f"Failed to process year {year}: {e}")
 
 if __name__ == "__main__":
+    import argparse
+    parser = argparse.ArgumentParser(description='Download satellite imagery for a range of years.')
+    parser.add_argument('--start', type=int, default=2005, help='Start year')
+    parser.add_argument('--end', type=int, default=2025, help='End year')
+    parser.add_argument('--bbox', type=float, nargs=4, help='Bounding box: min_lon min_lat max_lon max_lat')
+    parser.add_argument('--out_dir', type=str, help='Output directory for datasets')
+    
+    args = parser.parse_args()
+    
     initialize_ee()
     
-    # We define datasets to generate as requested
-    base_dir = os.path.dirname(os.path.dirname(__file__))
-    datasets_dir = os.path.join(base_dir, 'datasets')
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    # Central storage for all satellite images
+    output_dir = args.out_dir if args.out_dir else os.path.join(base_dir, 'datasets', 'satellite_images')
     
-    # Example ranges:
-    # Dataset 1: 2005-2025
-    generate_dataset(2005, 2025, os.path.join(datasets_dir, 'dataset_2005_2025'))
-    # Dataset 2: 2010-2025
-    generate_dataset(2010, 2025, os.path.join(datasets_dir, 'dataset_2010_2025'))
-    # Dataset 3: 2015-2025
-    generate_dataset(2015, 2025, os.path.join(datasets_dir, 'dataset_2015_2025'))
+    generate_dataset(args.start, args.end, output_dir, bbox=args.bbox)

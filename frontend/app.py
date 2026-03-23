@@ -45,11 +45,39 @@ st.sidebar.header("Configuration")
 
 # 1. Location Selection
 st.sidebar.subheader("1. Area of Interest")
-location_mode = st.sidebar.radio("Location Mode", ["Default (Warje, Pune)", "Custom Coordinates"])
+AOI_PRESETS = {
+    "Warje, Pune (Default)": {
+        "bbox": [73.76, 18.47, 73.83, 18.52],
+        "dataset_slug": "satellite_images",
+    },
+    "Baner (clear Mula river stretch)": {
+        "bbox": [73.762, 18.545, 73.812, 18.585],
+        "dataset_slug": "preset_baner",
+    },
+    "Sangamwadi (Mula-Mutha confluence)": {
+        "bbox": [73.845, 18.515, 73.895, 18.555],
+        "dataset_slug": "preset_sangamwadi",
+    },
+    "Balewadi (upstream Mula view)": {
+        "bbox": [73.745, 18.555, 73.790, 18.595],
+        "dataset_slug": "preset_balewadi",
+    },
+    "Pashan (river corridor)": {
+        "bbox": [73.775, 18.520, 73.825, 18.560],
+        "dataset_slug": "preset_pashan",
+    },
+}
 
-if location_mode == "Default (Warje, Pune)":
-    bbox = [73.76, 18.47, 73.83, 18.52]
+location_mode = st.sidebar.radio("Location Mode", ["Preset Pune AOIs", "Custom Coordinates"])
+
+if location_mode == "Preset Pune AOIs":
+    selected_preset = st.sidebar.selectbox("Preset Location", list(AOI_PRESETS.keys()), index=0)
+    bbox = AOI_PRESETS[selected_preset]["bbox"]
+    selected_dataset_slug = AOI_PRESETS[selected_preset]["dataset_slug"]
     aoi = get_aoi(bbox)
+    st.sidebar.caption(
+        f"Selected BBox: {bbox[0]:.4f}, {bbox[1]:.4f} to {bbox[2]:.4f}, {bbox[3]:.4f}"
+    )
 else:
     coord_input = st.sidebar.text_input("Center Coordinate (Lat, Lon)", value="18.471412, 73.823849")
     try:
@@ -236,13 +264,26 @@ def create_multi_overlay(satellite_tif_path, change_map_tif_path, show_water=Tru
     return Image.fromarray(rgb)
 
 
+def show_responsive_image(image_obj, caption=None):
+    """Render image full-width across Streamlit versions.
+    Streamlit <=1.32 uses `use_column_width`; newer versions use `use_container_width`.
+    """
+    kwargs = {}
+    if caption is not None:
+        kwargs["caption"] = caption
+    try:
+        st.image(image_obj, use_container_width=True, **kwargs)
+    except TypeError:
+        st.image(image_obj, use_column_width=True, **kwargs)
+
+
 # --- Main Dashboard ---
 row1_col1, row1_col2 = st.columns([2, 1])
 
 base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-if location_mode == "Default (Warje, Pune)":
-    dataset_folder = os.path.join(base_dir, 'datasets', 'satellite_images')
+if location_mode == "Preset Pune AOIs":
+    dataset_folder = os.path.join(base_dir, 'datasets', selected_dataset_slug)
 else:
     # Use formatted coordinates for custom folder
     coord_clean = coord_input.replace(", ", "_").replace(",", "_")
@@ -264,7 +305,7 @@ with row1_col1:
             if os.path.exists(tif_path):
                 try:
                     img = tif_to_rgb_image(tif_path)
-                    st.image(img, use_container_width=True)
+                    show_responsive_image(img)
                 except Exception as e:
                     st.error(f"Could not read image for {year}: {e}")
             else:
@@ -290,8 +331,7 @@ with row1_col1:
         # Helper to run script and stream output
         def run_and_stream(year):
             cmd = [sys.executable, gen_script, "--start", str(year), "--end", str(year), "--out_dir", dataset_folder]
-            if location_mode == "Custom Coordinates":
-                cmd.extend(["--bbox", str(bbox[0]), str(bbox[1]), str(bbox[2]), str(bbox[3])])
+            cmd.extend(["--bbox", str(bbox[0]), str(bbox[1]), str(bbox[2]), str(bbox[3])])
             
             process = subprocess.Popen(cmd, cwd=base_dir, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
             logs = f"--- Starting processing for {year} ---\n"
@@ -342,7 +382,7 @@ if os.path.exists(change_map_path) and os.path.exists(new_sat_path):
                 show_encroach=show_encroach,
                 alpha=overlay_alpha
             )
-            st.image(overlay_img, use_container_width=True, caption=f"Change map: {start_year} → {end_year}")
+            show_responsive_image(overlay_img, caption=f"Change map: {start_year} → {end_year}")
         except Exception as e:
             st.error(f"Could not generate overlay: {e}")
 
